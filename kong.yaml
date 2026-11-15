@@ -1,0 +1,89 @@
+_format_version: "3.0"
+
+vaults:
+  - name: hashicorp
+    prefix: hcv
+    config:
+      host: vault.internal
+      protocol: https
+      kv: v2
+      mount: secret
+      auth_method: kubernetes
+      kube_role: kong
+      kube_api_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      ttl: 60
+      neg_ttl: 10
+      resurrect_ttl: 60
+
+key-sets:
+  - name: internal-signing
+
+keys:
+  - name: internal-signing-current
+    kid: internal-signing-1
+    set:
+      name: internal-signing
+    jwk: "{vault://hcv/kong/jwt-signing/jwk}"
+
+services:
+  - name: orders-service
+    url: http://orders:8080
+    routes:
+      - name: orders-route
+        hosts: [api.example]
+        paths: ["/orders"]
+        methods: [GET, POST, PUT, PATCH, DELETE]
+        protocols: [https]
+        strip_path: false
+        plugins:
+          - name: jwt-signer
+            config:
+              channel_token_optional: true
+              access_token_signing: true
+              access_token_signing_algorithm: RS256
+              access_token_upstream_header: "Authorization:Bearer"
+              access_token_jwks_uri: https://keycloak.example/realms/app/protocol/openid-connect/certs
+              access_token_jwks_uri_rotate_period: 60
+              access_token_issuers_allowed:
+                - https://keycloak.example/realms/app
+              access_token_issuer: api.example
+              access_token_keyset: internal-signing
+              access_token_keyset_rotate_period: 60
+
+  - name: internal-jwks-service
+    url: http://orders:8080
+    routes:
+      - name: internal-jwks-route
+        hosts: [api.example]
+        paths: ["/.well-known/jwks.json"]
+        methods: [GET]
+        protocols: [https]
+        strip_path: true
+        plugins:
+          - name: pre-function
+            config:
+              access:
+                - |
+                  local cjson = require("cjson.safe")
+                  local row, err = kong.db.keys:select_by_name("internal-signing-current")
+                  if err or not row or not row.jwk then
+                    return kong.response.exit(404, { message = "jwks not found" })
+                  end
+
+                  local key = cjson.decode(row.jwk)
+                  if not key or not key.n or not key.e then
+                    return kong.response.exit(404, { message = "jwks not found" })
+                  end
+
+                  return kong.response.exit(200, {
+                    keys = {
+                      {
+                        kty = key.kty,
+                        kid = key.kid or row.kid,
+                        alg = key.alg or "RS256",
+                        use = "sig",
+                        n = key.n,
+                        e = key.e,
+                      },
+                    },
+                  })
