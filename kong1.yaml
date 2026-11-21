@@ -1,0 +1,117 @@
+_format_version: "3.0"
+
+# Vault, à la place du static :
+# vaults:
+#   - name: env            # mock : variable d'environnement du data plane
+#     prefix: hcv
+#   # - name: hashicorp    # Vault réel
+#   #   prefix: hcv
+#   #   config:
+#   #     host: <hôte Vault>
+#   #     port: 8200
+#   #     protocol: https
+#   #     kv: v2
+#   #     mount: secret
+#   #     auth_method: approle
+#   #     approle_role_id: <role id>
+#   #     approle_secret_id: <secret id>
+#   #     ttl: 60
+
+services:
+  - name: orders-service
+    url: http://orders:8080
+    routes:
+      - name: orders-route
+        hosts: [api.example]
+        paths: [/orders]
+        methods: [GET, POST, PUT, PATCH, DELETE]
+        protocols: [https]
+        strip_path: false
+        plugins:
+          - name: jwt-signer
+            config:
+              channel_token_optional: true
+              access_token_signing: true
+              access_token_signing_algorithm: RS256
+              access_token_upstream_header: "Authorization:Bearer"
+              access_token_jwks_uri: https://api.example/.well-known/jwks.json
+              access_token_jwks_uri_rotate_period: 60
+              access_token_issuers_allowed:
+                - api.example
+              access_token_issuer: api.example
+              access_token_keyset: http://127.0.0.1:8000/internal/signing-jwks
+              access_token_keyset_rotate_period: 60
+
+  - name: public-jwks
+    url: http://127.0.0.1:9
+    routes:
+      - name: public-jwks-route
+        hosts: [api.example]
+        paths: [/.well-known/jwks.json]
+        methods: [GET]
+        protocols: [https]
+        strip_path: true
+        plugins:
+          - name: datakit
+            config:
+              # resources:
+              #   vault:
+              #     public_jwks: "{vault://hcv/PUBLIC_JWKS}"
+              nodes:
+                - name: JWKS
+                  type: static
+                  values:
+                    keys:
+                      - kty: RSA
+                        kid: internal-signing-1
+                        alg: RS256
+                        use: sig
+                        n: "skc3kMuKgTcD_dlVmTWdFyCj7PF03wvDtQJuE0NhFuko1SJ7Dv9_GOJSQd0wE2v347bdRv6qyzB71RPhLb8CIwupCcrWnFkiiDuUo5KLx1M2ceTmT8LTFZzPCfnN1wETwKogsQQOgNIcpfwoAeuMiZryQeTVrERbGCTmXnSFxk5quyKVi68dPyOauUeMJ0g6CRIG6xNVDgOdmlJsjni0wzKA59SQ-92aSIMTJ2IqkEET_Km8Q_dnSIjLhXIkQyFGkMzKhgpfPVWMhsNU1TsD0cCnUUWix5R9oDqjchskcMkYVuol8wxSeMbnSREUs1DSCMVcOE8A7rfefazTY1WV1Q"
+                        e: "AQAB"
+                # Pour Vault, remplace le nœud JWKS par rien et change l'entrée :
+                #   body: vault.public_jwks
+                - name: RESPOND
+                  type: exit
+                  status: 200
+                  inputs:
+                    body: JWKS
+
+  - name: private-jwks
+    url: http://127.0.0.1:9
+    routes:
+      - name: private-jwks-route
+        hosts: ["127.0.0.1"]
+        paths: [/internal/signing-jwks]
+        methods: [GET]
+        protocols: [http]
+        strip_path: true
+        plugins:
+          - name: datakit
+            config:
+              # resources:
+              #   vault:
+              #     signing_jwks: "{vault://hcv/SIGNING_JWKS}"
+              nodes:
+                - name: JWKS
+                  type: static
+                  values:
+                    keys:
+                      - kty: RSA
+                        kid: internal-signing-1
+                        alg: RS256
+                        use: sig
+                        n: "skc3kMuKgTcD_dlVmTWdFyCj7PF03wvDtQJuE0NhFuko1SJ7Dv9_GOJSQd0wE2v347bdRv6qyzB71RPhLb8CIwupCcrWnFkiiDuUo5KLx1M2ceTmT8LTFZzPCfnN1wETwKogsQQOgNIcpfwoAeuMiZryQeTVrERbGCTmXnSFxk5quyKVi68dPyOauUeMJ0g6CRIG6xNVDgOdmlJsjni0wzKA59SQ-92aSIMTJ2IqkEET_Km8Q_dnSIjLhXIkQyFGkMzKhgpfPVWMhsNU1TsD0cCnUUWix5R9oDqjchskcMkYVuol8wxSeMbnSREUs1DSCMVcOE8A7rfefazTY1WV1Q"
+                        e: "AQAB"
+                        d: "KeiP6VvPrVxvdccXVjLCQOONZW_FV4F-ehieI60dL7OTw7adUwNAr2rUh2MloAsrdL5R-hR3tdgp5AcOUiCqse5VyFWEabCSa5AF-wXCEhM_ozp54Zoc4OHB0ciFWNuJ9yqHENWxSxsZXPOPvBPRL6_a7x6KFDrlZyGVffLKV7lGeDssDaWBSR_gAcSl8LXqzB963LKed4WpokPqJrM0VB3ma2U3AYmzjV6dOnFFIJTHTeScPtEQHj2bs93wQNWmdVjlIf2aOm2-6YPGrJUZzamtutJygmMjlniY4WBqaYaZEO0c2YV2h1swjJ44aXydE82SCDc4Usf38atmXc7_KQ"
+                        p: "6113eWAJ3YBmsY07xRce2xa7MbGNgpO9JRlRKrFZOuLuBZSF7lV7zvch56FQMKTgP0_5rN9JG49noXyY084c1m3_QkLVgvbHVLiBM8hKYhBbGwNuPvqrN7lsmudKSneJATxWPd9ZrMPRdSMMUeb9JqA84-2l3TeuRNI2yKznZ0M"
+                        q: "weh98Mlp6UKfpXKOqDuZvhgnl1-micJ9fJfHDtbzwawer50opHccndYUUtJd47BBwlF-3y443X-KN5pJNeP0EMWGvH3JFF-uRC5TaFTDD9irP9ulpmMZwveEsneVzGpLg0mqxm8NaHF_szk3BsykYpYNeWzWZR59Tu7WQMwTgQc"
+                        dp: "xd1KjlAtmvfR3VvlLniUaQzADDO-ylJXRXP2J1T2tamG_kvxF_7nWYOrDiYv2uUQ3EjolesUc8XoEftEI3N4DNBmMhcrlbDOvCtr-tNbrPshDCGjMfDbtbn9UnA0pUu-crp9qgA1TCdG1BnFxqjQkwNMjTUBJmsj5xluEuBAnS8"
+                        dq: "JGbP1bcJ8ec27yk9TKm7p-sC67DiI7RmOFCJ5uhFZFM6g38-VPmjXqIEuLOTOp4pCiCgb6dOt44s1Vlaawp7E_bw30vBxthbb6M-tzRKVhw3sco7I6ww9t_egl5eubwuptvaelv4qWW9MlkIUndyWKuQpf3flaYOohXGFO36r1s"
+                        qi: "6Iv-8uAbTw6LRY9gkKgT2yJY8hYkEVUkK17Jbu0uBFOaIUHcBCDeMGGjoeohKD9DEPa4ND2H4h21LhkvZLe58LKGtf9xWZbfBdGRi_IIb3dATXAkJay2Th8Vc6gwSVMBfBQSyd0hrThF4FbpgmamCMMt3ZK1Mjyq1Msc6ybSw8k"
+                # Pour Vault :
+                #   body: vault.signing_jwks
+                - name: RESPOND
+                  type: exit
+                  status: 200
+                  inputs:
+                    body: JWKS
