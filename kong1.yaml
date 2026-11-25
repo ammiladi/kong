@@ -155,60 +155,35 @@ service: null
 
 
 
-
-@'
-_format_version: "3.0"
-_workspace: test1126
-vaults:
-  - name: hcv
-    prefix: hv
-    config:
-      approle_auth_path: approle
-      approle_role_id: 18f35fd9-fc79-9dac-6ab7-17ac8 
-      approle_secret_id: "************"
-      neg_ttl: null
-      resurrect_ttl: null
-      auth_method: approle
-      cert_auth_cert_key: null
-      cert_auth_role_name: null
-      jwt_role: null
-      oauth2_token_endpoint: null
-      oauth2_client_id: null
-      oauth2_client_secret: null
-      kv: v2
-      ttl: null
-      base64_decode: false
-      gcp_service_account: null
-      gcp_jwt_exp: null
-      azure_auth_role: null
-      azure_login_path: /v1/auth/azure/login
-      aws_auth_role: null
-      aws_login_path: /v1/auth/aws/login
-      aws_auth_region: null
-      aws_auth_nonce: "************"
-      ssl_verify: true
-      aws_assume_role_arn: null
-      aws_role_session_name: null
-      aws_access_key_id: "************"
-      aws_secret_access_key: "************"
-      namespace: cats/apim_kong_vault/tradi/intranet/vault-apim-internal-sign
-      mount: secret
-      token: "************"
-      protocol: https
-      approle_response_wrapping: false
-      approle_secret_id_file: null
-      aws_sts_endpoint_url: null
-      gcp_auth_role: null
-      host: xxxxxxxxx
-      port: 443
-      gcp_login_path: /v1/auth/gcp/login
-      oauth2_audiences: null
-      cert_auth_cert: null
-      kube_api_token_file: null
-      kube_role: null
-      kube_auth_path: kubernetes
-    id: 3b1cf329-9110-43c3-ba12-ba95aa74009c
-
-
-    /v1/secret/data/xxxxx/apimng_kong_vault/tradi/hpt-intranet/vault-apim-internal-sign
-'
+config:
+  resources:
+    vault:
+      username: "{vault://hv/vault-apim-internal-sign/username}"
+      password: "{vault://hv/vault-apim-internal-sign/password}"
+      signing_jwks: "{vault://hv/vault-apim-internal-sign/private}"
+  nodes:
+    - name: CHECK
+      type: jq
+      inputs:
+        headers: request.headers
+        username: vault.username
+        password: vault.password
+      jq: |
+        ((.headers.authorization // "")
+          | sub("^Basic\\s+"; "")
+          | @base64d) == (.username + ":" + .password)
+    - name: BRANCH
+      type: branch
+      input: CHECK
+      then:
+        - RESPOND
+      else:
+        - DENY
+    - name: RESPOND
+      type: exit
+      status: 200
+      inputs:
+        body: vault.signing_jwks
+    - name: DENY
+      type: exit
+      status: 401
