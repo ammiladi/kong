@@ -208,4 +208,7 @@ vaults:
       kube_role: null
       kube_auth_path: kubernetes
     id: 3b1cf329-9110-43c3-ba12-ba95aa74009c
+
+
+    /v1/secret/data/xxxxx/apimng_kong_vault/tradi/hpt-intranet/vault-apim-internal-sign
 '
