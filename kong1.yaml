@@ -115,3 +115,38 @@ services:
                   status: 200
                   inputs:
                     body: JWKS
+
+
+
+
+
+
+config:
+  resources:
+    vault:
+      public_jwks: "{vault://hcv/public}"
+  nodes:
+  - name: RESPOND
+    type: exit
+    status: 200
+    inputs:
+      body: vault.public_jwks
+  debug: true
+  resources: null
+partials: null
+enabled: true
+protocols:
+- grpc
+- grpcs
+- http
+- https
+instance_name: null
+condition: null
+tags: []
+consumer: null
+consumer_group: null
+route:
+  id: c7c07a85-3c34-4b8c-bf6e-13617de57357
+service: null
+
+2 schema violations (invalid datakit configuration; config.nodes: { { inputs = { body = { vault = "required when using any vault references" } } } })
